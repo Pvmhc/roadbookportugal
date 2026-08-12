@@ -1248,7 +1248,7 @@ footer p{font-family:'Inter',sans-serif;font-weight:700;font-size:10px;letter-sp
     <div class="ed-section">
       <div class="ed-section-title">🔗 Opção recomendada: link do YouTube (não listado) ou vídeo já alojado</div>
       <p class="ed-hint">Cola aqui um link do YouTube (vídeo "Não listado") — é a opção mais simples e fiável. Também aceita um link direto de vídeo alojado no OneDrive/SharePoint, Google Drive, etc. Mantém o ficheiro do Road Book leve — o vídeo carrega da internet na hora. Precisa de ligação à internet para ver o vídeo.</p>
-      <p class="ed-hint">💡 Tem de ser um link "direto" para o ficheiro de vídeo (normalmente termina em .mp4), não a página de pré-visualização normal do OneDrive/Drive. Se tiveres dúvidas em obter esse link, avisa-me.</p>
+      <p class="ed-hint">💡 Link do OneDrive? Podes colar o link de partilha normal (1drv.ms ou onedrive.live.com) — a app converte-o automaticamente no formato direto. Para outros sítios (Google Drive, SharePoint), tem de ser mesmo o link "direto" para o ficheiro de vídeo, não a página de pré-visualização.</p>
       <input type="text" class="admin-input" id="edVideoUrlInput" placeholder="https://.../video.mp4">
       <button class="admin-fetch-btn" style="width:100%;margin-top:10px" onclick="usarLinkVideoPublicidade()">Usar este link (para a região escolhida acima)</button>
     </div>
@@ -1757,12 +1757,33 @@ function closeEditorVideo(){
   document.getElementById('editorVideoPanel').classList.remove('open');
 }
 
+/* Converte automaticamente um link de partilha do OneDrive (1drv.ms ou
+   onedrive.live.com) no link direto que o <video> consegue reproduzir.
+   Links de outros sítios (YouTube, links já diretos, etc.) passam inalterados. */
+function converterLinkOneDrive(url){
+  if (!url) return url;
+  if (/^https:\/\/api\.onedrive\.com\/v1\.0\/shares\//i.test(url)) return url; // já convertido
+  if (!/1drv\.ms\/|onedrive\.live\.com\//i.test(url)) return url; // não é OneDrive
+  try {
+    const base64 = btoa(url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return 'https://api.onedrive.com/v1.0/shares/u!' + base64 + '/root/content';
+  } catch (err) {
+    console.warn('Não foi possível converter o link do OneDrive:', err);
+    return url;
+  }
+}
+
 function usarLinkVideoPublicidade(){
   if (!SYNC_URL) marcarAlteracoesPorExportar();
-  const url = document.getElementById('edVideoUrlInput').value.trim();
+  let url = document.getElementById('edVideoUrlInput').value.trim();
   if (!url) {
     alert('Cola primeiro o link do vídeo.');
     return;
+  }
+  const linkOriginal = url;
+  url = converterLinkOneDrive(url);
+  if (url !== linkOriginal) {
+    document.getElementById('edVideoUrlInput').value = url;
   }
   const codigo = document.getElementById('edVideoRegiaoSelect').value;
   if (codigo) AD_VIDEOS_POR_REGIAO[codigo] = url;
@@ -3585,25 +3606,4 @@ function setStatus(msg, type){
     el.addEventListener('mouseenter', ()=> clearInterval(timer));
     el.addEventListener('mouseleave', resetTimer);
 
-    resetTimer();
-  }
-
-  // Init all slideshows on page
-  function initAll(){
-    document.querySelectorAll('.slideshow').forEach(el => {
-      if(!el.dataset.ready){ el.dataset.ready='1'; initSlideshow(el); }
-    });
-  }
-
-  // Run after render engine builds the DOM
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', ()=> setTimeout(initAll, 100));
-  } else {
-    setTimeout(initAll, 100);
-  }
-
-  // Also expose globally for dynamic re-init
-  window.initSlideshows = initAll;
-})();
-</script>
-<!-- Copia e c
+    resetTimer
