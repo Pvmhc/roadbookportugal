@@ -207,6 +207,8 @@ select.admin-input option{background:#0B4F30;color:#ffffff}
 .ad-video-overlay video{width:100%;height:100%;object-fit:contain}
 .ad-skip-btn{position:absolute;bottom:28px;right:24px;background:rgba(255,255,255,.14);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.4);color:#fff;font-family:'Inter',sans-serif;font-size:13px;font-weight:800;letter-spacing:.5px;padding:10px 18px;border-radius:100px;cursor:pointer}
 .ad-skip-btn:hover{background:rgba(255,255,255,.24)}
+.ad-sound-btn{position:absolute;bottom:28px;left:24px;background:rgba(255,255,255,.14);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.4);color:#fff;font-family:'Inter',sans-serif;font-size:13px;font-weight:800;letter-spacing:.5px;padding:10px 18px;border-radius:100px;cursor:pointer}
+.ad-sound-btn:hover{background:rgba(255,255,255,.24)}
 .aviso-exportar-banner{position:fixed;left:0;right:0;bottom:0;z-index:9000;background:linear-gradient(90deg,#7A1E1E,#9C2B2B);border-top:2px solid var(--gold);padding:12px 16px;display:none;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;box-shadow:0 -6px 20px rgba(0,0,0,.4)}
 .aviso-exportar-banner.show{display:flex}
 .aviso-exportar-banner span{font-family:'Inter',sans-serif;font-size:12.5px;font-weight:700;color:#fff;text-align:center}
@@ -1302,6 +1304,7 @@ footer p{font-family:'Inter',sans-serif;font-weight:700;font-size:10px;letter-sp
 <div class="ad-video-overlay" id="adVideoOverlay">
   <video id="adVideoEl" playsinline muted autoplay></video>
   <div id="adVideoYoutubeWrap" style="display:none;width:100%;height:100%"><div id="adVideoYoutube" style="width:100%;height:100%"></div></div>
+  <button class="ad-sound-btn" id="adVideoSoundBtn" onclick="alternarSomVideoAnuncio()">🔇 Ativar som</button>
   <button class="ad-skip-btn" id="adVideoSkipBtn" onclick="pularVideoAnuncio()">Saltar ▶</button>
 </div>
 
@@ -1600,6 +1603,7 @@ function reproduzirVideoAnuncio(src, callback){
   const ytId = extrairYoutubeId(src);
 
   overlay.classList.add('show');
+  atualizarBotaoSom(true); // cada vídeo novo arranca sempre mudo — o utilizador é que decide ligar o som
 
   if (ytId) {
     video.style.display = 'none';
@@ -1617,9 +1621,29 @@ function reproduzirVideoAnuncio(src, callback){
   } else {
     video.style.display = 'block';
     ytWrap.style.display = 'none';
+    video.muted = true;
     video.src = src;
     video.currentTime = 0;
     video.play().catch(() => {});
+  }
+}
+
+function atualizarBotaoSom(mudo){
+  const btn = document.getElementById('adVideoSoundBtn');
+  if (!btn) return;
+  btn.textContent = mudo ? '🔇 Ativar som' : '🔊 Som ligado';
+}
+
+function alternarSomVideoAnuncio(){
+  // Só liga/desliga o som quando a pessoa toca no botão — nunca automaticamente.
+  const video = document.getElementById('adVideoEl');
+  if (_ytPlayerAnuncio && video.style.display === 'none') {
+    const estaMudo = _ytPlayerAnuncio.isMuted ? _ytPlayerAnuncio.isMuted() : true;
+    if (estaMudo) { _ytPlayerAnuncio.unMute(); atualizarBotaoSom(false); }
+    else { _ytPlayerAnuncio.mute(); atualizarBotaoSom(true); }
+  } else {
+    video.muted = !video.muted;
+    atualizarBotaoSom(video.muted);
   }
 }
 
@@ -1628,8 +1652,10 @@ function pularVideoAnuncio(){
   const video = document.getElementById('adVideoEl');
   video.pause();
   video.src = '';
+  video.muted = true;
   if (_ytPlayerAnuncio) { try { _ytPlayerAnuncio.destroy(); } catch(e){} _ytPlayerAnuncio = null; }
   overlay.classList.remove('show');
+  atualizarBotaoSom(true);
   const cb = _aoTerminarVideoAnuncio;
   _aoTerminarVideoAnuncio = null;
   if (cb) cb();
@@ -2210,10 +2236,16 @@ function removerSyncUrl(){
 /* ══════ AVISO DE ALTERAÇÕES POR EXPORTAR ══════ */
 let _alteracoesPorExportar = false;
 
+let _avisoExportarTimeout = null;
+
 function marcarAlteracoesPorExportar(){
   _alteracoesPorExportar = true;
   const banner = document.getElementById('avisoExportarBanner');
-  if (banner) banner.classList.add('show');
+  if (banner) {
+    banner.classList.add('show');
+    clearTimeout(_avisoExportarTimeout);
+    _avisoExportarTimeout = setTimeout(() => banner.classList.remove('show'), 3000);
+  }
 }
 
 window.addEventListener('beforeunload', function(e){
