@@ -1256,6 +1256,7 @@ footer p{font-family:'Inter',sans-serif;font-weight:700;font-size:10px;letter-sp
     <div class="ed-section">
       <div class="ed-section-title">📤 Alternativa: carregar o ficheiro de vídeo</div>
       <p class="ed-hint">Carrega o vídeo diretamente para dentro do Road Book. Só funciona bem para vídeos MUITO curtos e leves (poucos segundos) — vídeos maiores tornam o ficheiro final pesado e lento a abrir/enviar. Para 30 segundos ou mais, usa a opção do link acima.</p>
+      <p class="ed-hint">⚠️ <strong>Não sincroniza entre telemóveis.</strong> A sincronização automática só funciona com o link (opção acima). Um ficheiro carregado aqui fica só neste aparelho até exportares e partilhares o ficheiro manualmente.</p>
       <input type="file" accept="video/*" id="edVideoInput" onchange="substituirVideoPublicidade(this.files[0])">
     </div>
 
@@ -1780,7 +1781,17 @@ function substituirVideoPublicidade(file){
     else AD_VIDEO_SRC = dataUrl;
     document.getElementById('edVideoUrlInput').value = '';
     guardarVideosNoDispositivo();
-    syncPost('save_video', { regiao: codigo, url: dataUrl });
+    if (SYNC_URL) {
+      // A célula da Google Sheet tem um limite (~50.000 carateres). Um ficheiro
+      // de vídeo em base64 ultrapassa isso facilmente — nesse caso não enviamos
+      // para a cloud (ficaria corrompido) e avisamos para usar antes um link.
+      if (dataUrl.length > 45000) {
+        alert('Este vídeo é grande demais para sincronizar automaticamente entre telemóveis (limite da Google Sheet). Vai ficar só neste aparelho. Para sincronizar em todos os telemóveis, usa a opção de link (YouTube ou vídeo alojado) em vez de carregar o ficheiro.');
+        marcarAlteracoesPorExportar();
+      } else {
+        syncPost('save_video', { regiao: codigo, url: dataUrl });
+      }
+    }
     atualizarPreviewVideo();
     renderListaVideosPorRegiao();
   });
@@ -2121,7 +2132,9 @@ function adicionarIconeCapa(){
 }
 
 /* ══════ SINCRONIZAÇÃO COM GOOGLE SHEETS (ESTABELECIMENTOS + VÍDEOS) ══════ */
-let SYNC_URL = localStorage.getItem('roadbook_sync_url') || '';
+const SYNC_URL_PREDEFINIDO = 'https://script.google.com/macros/s/AKfycbw6Hfpwb56UTP85KDJjVkiJ7_9XeVaS5yfTa_83iL716SCUa329q6eykX9GNK2XDHg/exec';
+const _syncGuardado = localStorage.getItem('roadbook_sync_url');
+let SYNC_URL = (_syncGuardado === '__off__') ? '' : (_syncGuardado || SYNC_URL_PREDEFINIDO);
 let _syncEmCurso = false;
 
 function atualizarEstadoSync(estado){
@@ -2228,7 +2241,7 @@ function guardarSyncUrl(){
 function removerSyncUrl(){
   if (!confirm('Desligar a sincronização? Os dados vão passar a ficar só neste dispositivo.')) return;
   SYNC_URL = '';
-  localStorage.removeItem('roadbook_sync_url');
+  localStorage.setItem('roadbook_sync_url', '__off__');
   document.getElementById('edSyncUrlInput').value = '';
   atualizarEstadoSync('');
 }
@@ -3593,17 +3606,4 @@ function setStatus(msg, type){
   window.initSlideshows = initAll;
 })();
 </script>
-<!-- Copia e cola este bloco completo no final do teu HTML, antes do </body> -->
-<style>
-  /* Injeta uma transição suave para a viewBox do SVG sem alterar o teu CSS original */
-  svg {
-    transition: view-box 0.4s ease-in-out, transform 0.4s ease-in-out;
-  }
-  /* Classe auxiliar caso precises de dar feedback visual à região ativa (opcional) */
-  .region-active {
-    filter: drop-shadow(0px 0px 8px rgba(255, 215, 0, 0.6));
-  }
-</style>
-
-
-</body></html>
+<!-- Copia e c
