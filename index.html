@@ -1693,6 +1693,7 @@ function renderListaVideosPorRegiao(){
 function removerVideoDeRegiao(codigo){
   marcarAlteracoesPorExportar();
   delete AD_VIDEOS_POR_REGIAO[codigo];
+  guardarVideosNoDispositivo();
   if (document.getElementById('edVideoRegiaoSelect').value === codigo) atualizarPreviewVideo();
   renderListaVideosPorRegiao();
 }
@@ -1739,6 +1740,7 @@ function usarLinkVideoPublicidade(){
   const codigo = document.getElementById('edVideoRegiaoSelect').value;
   if (codigo) AD_VIDEOS_POR_REGIAO[codigo] = url;
   else AD_VIDEO_SRC = url;
+  guardarVideosNoDispositivo();
   syncPost('save_video', { regiao: codigo, url });
   atualizarPreviewVideo();
   renderListaVideosPorRegiao();
@@ -1751,6 +1753,7 @@ function substituirVideoPublicidade(file){
     if (codigo) AD_VIDEOS_POR_REGIAO[codigo] = dataUrl;
     else AD_VIDEO_SRC = dataUrl;
     document.getElementById('edVideoUrlInput').value = '';
+    guardarVideosNoDispositivo();
     syncPost('save_video', { regiao: codigo, url: dataUrl });
     atualizarPreviewVideo();
     renderListaVideosPorRegiao();
@@ -1764,6 +1767,7 @@ function removerVideoPublicidade(){
   else AD_VIDEO_SRC = '';
   document.getElementById('edVideoInput').value = '';
   document.getElementById('edVideoUrlInput').value = '';
+  guardarVideosNoDispositivo();
   syncPost('delete_video', { regiao: codigo });
   atualizarPreviewVideo();
   renderListaVideosPorRegiao();
@@ -1810,6 +1814,27 @@ const TIPOS_ICONES_CAPA = ['galo','bridge','castle','castle2','box','tram','hous
 
 let AD_VIDEO_SRC = /*__ADVIDEO_START__*/''/*__ADVIDEO_END__*/;
 let AD_VIDEOS_POR_REGIAO = /*__ADVIDEOSREGIAO_START__*/{}/*__ADVIDEOSREGIAO_END__*/;
+
+/* ── Se existirem vídeos de publicidade guardados neste dispositivo,
+   substituem os vídeos de fábrica acima (mesmo padrão dos estabelecimentos) ── */
+(function(){
+  try{
+    const vGuardado = localStorage.getItem('roadbook_ad_video_src');
+    if (vGuardado !== null) AD_VIDEO_SRC = vGuardado;
+    const vrGuardado = localStorage.getItem('roadbook_ad_videos_regiao');
+    if (vrGuardado){
+      const dados = JSON.parse(vrGuardado);
+      if (dados && typeof dados === 'object') AD_VIDEOS_POR_REGIAO = dados;
+    }
+  }catch(err){ console.warn('Não foi possível carregar vídeos guardados:', err); }
+})();
+
+function guardarVideosNoDispositivo(){
+  try{
+    localStorage.setItem('roadbook_ad_video_src', AD_VIDEO_SRC || '');
+    localStorage.setItem('roadbook_ad_videos_regiao', JSON.stringify(AD_VIDEOS_POR_REGIAO));
+  }catch(err){ console.warn('Não foi possível guardar vídeos neste dispositivo:', err); }
+}
 
 const COVER_MAP_ICONS = /*__ICONS_START__*/[
   { tipo: 'galo',    x: 300, y: 155,  escala: 2 },
@@ -2148,6 +2173,7 @@ async function carregarDadosCloud(manual){
       if (codigo === '_padrao') AD_VIDEO_SRC = videos[codigo];
       else AD_VIDEOS_POR_REGIAO[codigo] = videos[codigo];
     });
+    guardarVideosNoDispositivo();
   }
 
   if (lista !== null || videos !== null) atualizarEstadoSync('ok');
