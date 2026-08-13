@@ -1380,10 +1380,37 @@ footer p{font-family:'Inter',sans-serif;font-weight:700;font-size:10px;letter-sp
 ];/*__ESTAB_END__*/
 
 /* ── Se existirem dados importados via Excel guardados neste dispositivo,
-   substituem os estabelecimentos de fábrica acima ─────────────────── */
+   substituem os estabelecimentos de fábrica acima — MAS só se os dados
+   de fábrica (os que estão escritos neste ficheiro .html) forem os
+   mesmos de quando esse import foi feito. Se editares o ficheiro à mão
+   e acrescentares/alterares estabelecimentos diretamente no código,
+   isso muda a "impressão digital" dos dados de fábrica, e qualquer
+   import antigo guardado no browser é automaticamente ignorado e
+   limpo — para os teus novos dados nunca desaparecerem, "tapados"
+   por um import de teste anterior. ──────────────────────────────── */
 const ESTABELECIMENTOS_ORIGINAIS = JSON.parse(JSON.stringify(ESTABELECIMENTOS));
+function hashEstabelecimentos(arr){
+  const str = JSON.stringify(arr);
+  let hash = 0;
+  for(let i=0;i<str.length;i++){
+    hash = (hash*31 + str.charCodeAt(i)) | 0;
+  }
+  return hash.toString(36);
+}
 (function(){
   try{
+    const hashFabrica = hashEstabelecimentos(ESTABELECIMENTOS_ORIGINAIS);
+    const hashGuardado = localStorage.getItem('roadbook_estab_baked_hash');
+    if(hashGuardado !== hashFabrica){
+      // Os dados de fábrica deste ficheiro mudaram desde o último import
+      // guardado neste browser (ex: editaste o HTML à mão) → o import
+      // antigo já não faz sentido, é descartado.
+      localStorage.removeItem('roadbook_estabelecimentos');
+      localStorage.setItem('roadbook_estab_baked_hash', hashFabrica);
+      const btnReset = document.getElementById('adminResetBtn');
+      if(btnReset) btnReset.style.display = 'none';
+      return;
+    }
     const guardado = localStorage.getItem('roadbook_estabelecimentos');
     if(guardado){
       const dados = JSON.parse(guardado);
@@ -2717,7 +2744,7 @@ function importarExcel(file){
   }
 
   const reader = new FileReader();
-  reader.onload = function(e){
+  reader.onload = async function(e){
     try{
       const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
       const primeiraFolha = wb.Sheets[wb.SheetNames[0]];
@@ -2737,6 +2764,25 @@ function importarExcel(file){
         return;
       }
 
+      // Preserva os IDs já existentes (por nome+cidade), para não partir
+      // links/QR de estabelecimentos que já cá estavam. Só atribui um ID
+      // novo a quem realmente é novo.
+      const mapaIdsAntigos = new Map(ESTABELECIMENTOS.map(e => [chaveEstabelecimento(e), e.id]));
+      let maiorId = 0;
+      ESTABELECIMENTOS.forEach(e => {
+        const m = /^card-(\d+)$/.exec(e.id || '');
+        if(m) maiorId = Math.max(maiorId, parseInt(m[1], 10));
+      });
+      novos.forEach(n => {
+        const chave = chaveEstabelecimento(n);
+        if(mapaIdsAntigos.has(chave)){
+          n.id = mapaIdsAntigos.get(chave);
+        }else{
+          maiorId += 1;
+          n.id = 'card-' + maiorId;
+        }
+      });
+
       // Calcula o que foi acrescentado / removido / mantido
       const chavesAntigas = new Set(ESTABELECIMENTOS.map(chaveEstabelecimento));
       const chavesNovas = new Set(novos.map(chaveEstabelecimento));
@@ -2749,20 +2795,42 @@ function importarExcel(file){
       ESTABELECIMENTOS.push(...novos);
 
       localStorage.setItem('roadbook_estabelecimentos', JSON.stringify(ESTABELECIMENTOS));
-      marcarAlteracoesPorExportar();
       document.getElementById('adminResetBtn').style.display = 'block';
+
+      // Envia a lista completa para a Google Sheet — passa a ser a
+      // fonte de verdade para todos os dispositivos, não só este.
+      let avisoSync = '';
+      if (SYNC_URL) {
+        atualizarEstadoSync('a-sincronizar');
+        try{
+          await syncFetchComRetentativas(SYNC_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'import', dados: novos })
+          });
+          atualizarEstadoSync('ok');
+        }catch(err){
+          console.warn('Erro a sincronizar import com a cloud:', err);
+          atualizarEstadoSync('erro');
+          avisoSync = '\n\n⚠️ Não foi possível gravar na Google Sheet agora (ficou só neste dispositivo). Confirma a ligação à internet e importa novamente.';
+          marcarAlteracoesPorExportar();
+        }
+      } else {
+        marcarAlteracoesPorExportar();
+      }
 
       // Volta a renderizar tudo com os novos dados
       renderEstabelecimentos();
       estabelecimentosRenderizados = true;
       atualizarContadoresHotspots();
       renderRegionMap();
+      atualizarCoverCount();
       if(window.initSlideshows) window.initSlideshows();
       clearCity();
       document.getElementById('q').value = '';
       applyFilters();
 
-      alert(`Importação concluída:\n+ ${adicionados} adicionados\n- ${removidos} removidos\n= ${mantidos} mantidos\nTotal: ${novos.length} estabelecimentos`);
+      alert(`Importação concluída:\n+ ${adicionados} adicionados\n- ${removidos} removidos\n= ${mantidos} mantidos\nTotal: ${novos.length} estabelecimentos${avisoSync}`);
     }catch(err){
       console.error(err);
       alert('Não foi possível ler este ficheiro.\n\nDetalhe do erro: ' + (err && err.message ? err.message : err) + '\n\nConfirma que é um .xlsx válido e que a primeira folha tem os cabeçalhos certos.');
@@ -3606,4 +3674,38 @@ function setStatus(msg, type){
     el.addEventListener('mouseenter', ()=> clearInterval(timer));
     el.addEventListener('mouseleave', resetTimer);
 
-    resetTimer
+    resetTimer();
+  }
+
+  // Init all slideshows on page
+  function initAll(){
+    document.querySelectorAll('.slideshow').forEach(el => {
+      if(!el.dataset.ready){ el.dataset.ready='1'; initSlideshow(el); }
+    });
+  }
+
+  // Run after render engine builds the DOM
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', ()=> setTimeout(initAll, 100));
+  } else {
+    setTimeout(initAll, 100);
+  }
+
+  // Also expose globally for dynamic re-init
+  window.initSlideshows = initAll;
+})();
+</script>
+<!-- Copia e cola este bloco completo no final do teu HTML, antes do </body> -->
+<style>
+  /* Injeta uma transição suave para a viewBox do SVG sem alterar o teu CSS original */
+  svg {
+    transition: view-box 0.4s ease-in-out, transform 0.4s ease-in-out;
+  }
+  /* Classe auxiliar caso precises de dar feedback visual à região ativa (opcional) */
+  .region-active {
+    filter: drop-shadow(0px 0px 8px rgba(255, 215, 0, 0.6));
+  }
+</style>
+
+
+</body></html>
