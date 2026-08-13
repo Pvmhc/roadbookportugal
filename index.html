@@ -2821,7 +2821,7 @@ function importarExcel(file){
         }catch(err){
           console.warn('Erro a sincronizar import com a cloud:', err);
           atualizarEstadoSync('erro');
-          avisoSync = '\n\n⚠️ Não foi possível gravar na Google Sheet agora (ficou só neste dispositivo). Confirma a ligação à internet e importa novamente.';
+          avisoSync = '\n\n⚠️ Não foi possível gravar na Google Sheet agora (ficou só neste dispositivo).\nDetalhe: ' + (err && err.message ? err.message : err) + '\n\nConfirma a ligação à internet e importa novamente.';
           marcarAlteracoesPorExportar();
         }
       } else {
