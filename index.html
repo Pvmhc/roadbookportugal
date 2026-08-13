@@ -2201,9 +2201,18 @@ async function syncFetchComRetentativas(url, options, tentativas){
     try {
       const resp = await fetch(url, options);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return await resp.json();
+      const dados = await resp.json();
+      // O Apps Script responde sempre HTTP 200, mesmo quando há um erro
+      // "de lógica" (ex: ação desconhecida porque o script não foi
+      // reimplementado). Sem isto, esses erros passavam como sucesso.
+      if (dados && dados.erro) throw new Error(dados.erro);
+      return dados;
     } catch (err) {
       ultimoErro = err;
+      // Erros de lógica do backend não se resolvem tentando outra vez —
+      // falha imediatamente em vez de esperar e repetir sem sentido.
+      const eErroDeRede = !err.message || err.message.indexOf('HTTP') === 0 || err.name === 'TypeError';
+      if (!eErroDeRede) throw err;
       await new Promise(r => setTimeout(r, 500 * Math.pow(2, i)));
     }
   }
