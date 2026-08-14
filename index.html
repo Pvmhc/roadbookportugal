@@ -1325,6 +1325,7 @@ footer p{font-family:'Inter',sans-serif;font-weight:700;font-size:10px;letter-sp
   <div class="calib-panel-head">
     <span>Coordenadas do mapa</span>
     <button onclick="limparCalibracao()">limpar</button>
+    <button onclick="fecharCalibracao()" style="margin-left:6px;">✕ fechar</button>
   </div>
   <div class="calib-panel-list" id="calibList"></div>
 </div>
@@ -2180,7 +2181,7 @@ function adicionarIconeCapa(){
 }
 
 /* ══════ SINCRONIZAÇÃO COM GOOGLE SHEETS (ESTABELECIMENTOS + VÍDEOS) ══════ */
-const SYNC_URL_PREDEFINIDO = 'https://script.google.com/macros/s/AKfycbxooPv2WelO3tgFK92XfNyejQGT9IVLPQuhfpvBQ-TwkS09mUla7taYMYYgoGJAvGg/exec';
+const SYNC_URL_PREDEFINIDO = 'https://script.google.com/macros/s/AKfycbw6Hfpwb56UTP85KDJjVkiJ7_9XeVaS5yfTa_83iL716SCUa329q6eykX9GNK2XDHg/exec';
 const _syncGuardado = localStorage.getItem('roadbook_sync_url');
 let SYNC_URL = (_syncGuardado === '__off__') ? '' : (_syncGuardado || SYNC_URL_PREDEFINIDO);
 let _syncEmCurso = false;
@@ -2773,41 +2774,43 @@ function importarExcel(file){
         return;
       }
 
-      // Preserva os IDs já existentes (por nome+cidade), para não partir
-      // links/QR de estabelecimentos que já cá estavam. Só atribui um ID
-      // novo a quem realmente é novo.
-      const mapaIdsAntigos = new Map(ESTABELECIMENTOS.map(e => [chaveEstabelecimento(e), e.id]));
+      // Junta os novos com os já existentes (por nome+cidade) — nunca apaga
+      // nada. Quem já existia é atualizado com os dados do Excel; quem é
+      // novo é acrescentado com um ID novo.
+      const mapaExistentes = new Map(ESTABELECIMENTOS.map(e => [chaveEstabelecimento(e), e]));
       let maiorId = 0;
       ESTABELECIMENTOS.forEach(e => {
         const m = /^card-(\d+)$/.exec(e.id || '');
         if(m) maiorId = Math.max(maiorId, parseInt(m[1], 10));
       });
+
+      let adicionados = 0, atualizados = 0;
       novos.forEach(n => {
         const chave = chaveEstabelecimento(n);
-        if(mapaIdsAntigos.has(chave)){
-          n.id = mapaIdsAntigos.get(chave);
+        const existente = mapaExistentes.get(chave);
+        if(existente){
+          n.id = existente.id; // mantém o mesmo ID (não parte links/QR)
+          Object.assign(existente, n); // atualiza os campos no registo já existente
+          atualizados++;
         }else{
           maiorId += 1;
           n.id = 'card-' + maiorId;
+          mapaExistentes.set(chave, n);
+          adicionados++;
         }
       });
 
-      // Calcula o que foi acrescentado / removido / mantido
-      const chavesAntigas = new Set(ESTABELECIMENTOS.map(chaveEstabelecimento));
-      const chavesNovas = new Set(novos.map(chaveEstabelecimento));
-      const adicionados = novos.filter(e => !chavesAntigas.has(chaveEstabelecimento(e))).length;
-      const removidos = ESTABELECIMENTOS.filter(e => !chavesNovas.has(chaveEstabelecimento(e))).length;
-      const mantidos = novos.length - adicionados;
+      const listaFinal = Array.from(mapaExistentes.values());
+      const mantidos = listaFinal.length - adicionados - atualizados;
 
       // Substitui o conteúdo do array (mantendo a mesma referência)
       ESTABELECIMENTOS.length = 0;
-      ESTABELECIMENTOS.push(...novos);
+      ESTABELECIMENTOS.push(...listaFinal);
 
       localStorage.setItem('roadbook_estabelecimentos', JSON.stringify(ESTABELECIMENTOS));
       document.getElementById('adminResetBtn').style.display = 'block';
 
-      // Envia a lista completa para a Google Sheet — passa a ser a
-      // fonte de verdade para todos os dispositivos, não só este.
+      // Envia a lista completa (já com tudo junto) para a Google Sheet
       let avisoSync = '';
       if (SYNC_URL) {
         atualizarEstadoSync('a-sincronizar');
@@ -2815,7 +2818,7 @@ function importarExcel(file){
           await syncFetchComRetentativas(SYNC_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'import', dados: novos })
+            body: JSON.stringify({ action: 'import', dados: listaFinal })
           });
           atualizarEstadoSync('ok');
         }catch(err){
@@ -2839,7 +2842,7 @@ function importarExcel(file){
       document.getElementById('q').value = '';
       applyFilters();
 
-      alert(`Importação concluída:\n+ ${adicionados} adicionados\n- ${removidos} removidos\n= ${mantidos} mantidos\nTotal: ${novos.length} estabelecimentos${avisoSync}`);
+      alert(`Importação concluída (juntou-se ao que já existia):\n+ ${adicionados} adicionados\n~ ${atualizados} atualizados\n= ${mantidos} mantidos sem alteração\nTotal: ${listaFinal.length} estabelecimentos${avisoSync}`);
     }catch(err){
       console.error(err);
       alert('Não foi possível ler este ficheiro.\n\nDetalhe do erro: ' + (err && err.message ? err.message : err) + '\n\nConfirma que é um .xlsx válido e que a primeira folha tem os cabeçalhos certos.');
@@ -2873,6 +2876,16 @@ function toggleCalibracao(){
   document.getElementById('calibPanel').classList.toggle('on', calibrando);
   document.querySelectorAll('.map-container').forEach(c => c.classList.toggle('calib-on', calibrando));
 }
+
+function fecharCalibracao(){
+  calibrando = false;
+  document.getElementById('calibPanel').classList.remove('on');
+  document.querySelectorAll('.map-container').forEach(c => c.classList.remove('calib-on'));
+}
+
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape' && calibrando) fecharCalibracao();
+});
 
 function limparCalibracao(){
   document.getElementById('calibList').innerHTML = '';
