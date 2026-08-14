@@ -2233,7 +2233,8 @@ async function syncPost(action, extra){
     await syncFetchComRetentativas(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ action }, extra))
+      body: JSON.stringify(Object.assign({ action }, extra)),
+      cache: 'no-store'
     });
     atualizarEstadoSync('ok');
   } catch (err) {
@@ -2245,7 +2246,11 @@ async function syncPost(action, extra){
 async function syncGet(action){
   if (!SYNC_URL) return null;
   try {
-    return await syncFetchComRetentativas(SYNC_URL + '?action=' + action, { method: 'GET' });
+    // "&_=" com a hora atual garante que o URL nunca se repete, para o
+    // browser (sobretudo Safari/iOS) nunca servir uma resposta antiga
+    // guardada em cache em vez de ir mesmo à Sheet.
+    const url = SYNC_URL + '?action=' + action + '&_=' + Date.now();
+    return await syncFetchComRetentativas(url, { method: 'GET', cache: 'no-store' });
   } catch (err) {
     console.warn('Erro a carregar dados da cloud:', err);
     atualizarEstadoSync('erro');
@@ -2825,7 +2830,8 @@ function importarExcel(file){
           await syncFetchComRetentativas(SYNC_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'import', dados: listaFinal })
+            body: JSON.stringify({ action: 'import', dados: listaFinal }),
+            cache: 'no-store'
           });
           atualizarEstadoSync('ok');
         }catch(err){
