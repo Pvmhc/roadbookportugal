@@ -2881,6 +2881,7 @@ function fecharCalibracao(){
   calibrando = false;
   document.getElementById('calibPanel').classList.remove('on');
   document.querySelectorAll('.map-container').forEach(c => c.classList.remove('calib-on'));
+  document.querySelectorAll('.calib-marker').forEach(m => m.remove());
 }
 
 document.addEventListener('keydown', function(e){
