@@ -73,7 +73,7 @@ h1,h2,h3,.c-name,.card-ov-name{font-family:'Poppins',sans-serif}
 .map-container{position:relative;max-width:740px;margin:0 auto;cursor:pointer;user-select:none;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--border)}
 .map-zoom-wrap{max-width:740px;margin:0 auto;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius);scrollbar-width:thin}
 .map-zoom-wrap .map-container{margin:0;transition:width .3s ease;touch-action:pan-x pan-y}
-.map-zoom-wrap.zoomed .map-container{width:190%;max-width:none}
+.map-zoom-wrap.zoomed .map-container{width:190% !important;max-width:none !important}
 .map-zoom-hint{font-family:'Inter',sans-serif;font-size:11px;color:var(--softwhite);text-align:center;margin:8px 0 0;opacity:.7}
 .map-img{width:100%;display:block;border-radius:var(--radius)}
 .cover-bg-layer{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none}
@@ -1301,7 +1301,7 @@ footer p{font-family:'Inter',sans-serif;font-weight:700;font-size:10px;letter-sp
       <input type="file" accept="image/*" id="edMapaRegiaoInput" onchange="substituirMapaRegiao(this.files[0])">
       <div class="ed-field" style="margin-top:12px">
         <label class="ed-label">Tamanho do mapa desta região (%)</label>
-        <input type="number" class="admin-input" id="edMapaRegiaoTam" min="40" max="160" step="5" value="100" onchange="ajustarTamanhoMapaRegiao(this.value)">
+        <input type="number" class="admin-input" id="edMapaRegiaoTam" min="40" max="300" step="5" value="100" onchange="ajustarTamanhoMapaRegiao(this.value)">
       </div>
     </div>
 
@@ -2332,21 +2332,61 @@ function substituirMapaRegiao(file){
 function atualizarCampoTamanhoRegiao(){
   const codigo = document.getElementById('edRegiaoSelect').value;
   const secao = document.querySelector(`section.map-sec[data-region-code="${codigo}"]`);
-  const img = secao ? secao.querySelector('.map-img') : null;
-  document.getElementById('edMapaRegiaoTam').value = (img && img.dataset.escala) ? img.dataset.escala : 100;
+  const cont = secao ? secao.querySelector('.map-container') : null;
+  document.getElementById('edMapaRegiaoTam').value = (cont && cont.dataset.escala) ? cont.dataset.escala : 100;
 }
 
+// Aumenta/diminui o tamanho REAL do mapa da região (não é zoom temporário
+// de leitura — fica assim para todos, em todos os equipamentos). Redimensiona
+// o map-container (não a imagem) dentro da "janela" com scroll (.map-zoom-wrap),
+// para não ficar cortado pelo recorte do contentor.
+let _regionScaleTimers = {};
 function ajustarTamanhoMapaRegiao(valor){
   marcarAlteracoesPorExportar();
   const codigo = document.getElementById('edRegiaoSelect').value;
+  aplicarEscalaRegiao(codigo, valor);
+  guardarEscalaRegiaoCloud(codigo, valor);
+}
+
+function aplicarEscalaRegiao(codigo, valor){
   const secao = document.querySelector(`section.map-sec[data-region-code="${codigo}"]`);
-  const img = secao ? secao.querySelector('.map-img') : null;
-  if (!img) return;
-  img.dataset.escala = valor;
-  img.style.width = valor + '%';
-  img.style.display = 'block';
-  img.style.marginLeft = 'auto';
-  img.style.marginRight = 'auto';
+  const cont = secao ? secao.querySelector('.map-container') : null;
+  if (!cont) return;
+  cont.dataset.escala = valor;
+  cont.style.width = valor + '%';
+  const wrap = cont.closest('.map-zoom-wrap');
+  if (wrap) wrap.classList.remove('zoomed'); // evita conflito com o duplo-toque
+}
+
+function guardarEscalaRegiaoCloud(codigo, valor){
+  if (!codigo) return;
+  const escalas = JSON.parse(localStorage.getItem('roadbook_escalas_regiao') || '{}');
+  escalas[codigo] = { regiao: codigo, escala: valor };
+  localStorage.setItem('roadbook_escalas_regiao', JSON.stringify(escalas));
+
+  if (!SYNC_URL) return;
+  clearTimeout(_regionScaleTimers[codigo]);
+  _regionScaleTimers[codigo] = setTimeout(() => {
+    syncPost('save_region_scale', { dados: escalas[codigo] });
+  }, 600);
+}
+
+async function carregarEscalasRegiao(){
+  let escalas = {};
+  try{
+    const local = localStorage.getItem('roadbook_escalas_regiao');
+    if (local) escalas = JSON.parse(local);
+  }catch(err){}
+  if (SYNC_URL) {
+    const daCloud = await syncGet('list_region_scale');
+    if (daCloud && typeof daCloud === 'object') {
+      escalas = Object.assign({}, escalas, daCloud);
+      localStorage.setItem('roadbook_escalas_regiao', JSON.stringify(escalas));
+    }
+  }
+  Object.values(escalas).forEach(o => {
+    if (o && o.regiao && o.escala) aplicarEscalaRegiao(o.regiao, o.escala);
+  });
 }
 
 function renderEdIconesLista(){
@@ -2870,6 +2910,7 @@ document.addEventListener('DOMContentLoaded', () => {
   configurarAdminDot();
   if (SYNC_URL) carregarDadosCloud();
   carregarPinOverrides();
+  carregarEscalasRegiao();
 });
 
 /* ── ACESSO DISCRETO ÀS FERRAMENTAS INTERNAS ───────────────────────
