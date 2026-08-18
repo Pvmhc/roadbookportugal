@@ -1062,23 +1062,12 @@ footer p{font-family:'Inter',sans-serif;font-weight:700;font-size:10px;letter-sp
       <span class="fi-lbl">Filtrar</span>
       <input type="search" class="search" id="q" placeholder="Pesquisar…" oninput="applyFilters()">
     </div>
-    <div class="type-row">
+    <div class="type-row" id="typeRow">
       <button class="tbtn active" data-t="ALL" onclick="filterType('ALL')">Todos</button>
-      <button class="tbtn" data-t="RESTAURANTE" onclick="filterType('RESTAURANTE')">🍽 Restaurante</button>
-      <button class="tbtn" data-t="BAR" onclick="filterType('BAR')">🍺 Bar</button>
-      <button class="tbtn" data-t="ESPLANADA" onclick="filterType('ESPLANADA')">☀️ Esplanada</button>
-      <button class="tbtn" data-t="NIGHTLIFE" onclick="filterType('NIGHTLIFE')">🎵 Noite</button>
-      <button class="tbtn" data-t="PRAIA_PISCINA" onclick="filterType('PRAIA_PISCINA')">🏖️ Praia/Piscina</button>
       <button class="tbtn" data-t="FLAGSHIP" onclick="filterType('FLAGSHIP')">⭐ Flagship</button>
     </div>
     <div class="type-row cuisine-row" id="cuisineRow" style="display:none">
       <button class="cbtn active" data-c="ALL" onclick="filterCozinha('ALL')">Todas as cozinhas</button>
-      <button class="cbtn" data-c="ASIATICO" onclick="filterCozinha('ASIATICO')">🥢 Asiático</button>
-      <button class="cbtn" data-c="ITALIANO" onclick="filterCozinha('ITALIANO')">🍝 Italiano</button>
-      <button class="cbtn" data-c="TAPAS_RETIROS" onclick="filterCozinha('TAPAS_RETIROS')">🍢 Tapas & Retiros</button>
-      <button class="cbtn" data-c="MARISQUEIRA_CERVEJARIA" onclick="filterCozinha('MARISQUEIRA_CERVEJARIA')">🦐 Marisqueira & Cervejaria</button>
-      <button class="cbtn" data-c="COZINHA_AUTOR" onclick="filterCozinha('COZINHA_AUTOR')">👨‍🍳 Cozinha Autor</button>
-      <button class="cbtn" data-c="TIPICOS_TRADICIONAIS" onclick="filterCozinha('TIPICOS_TRADICIONAIS')">🥘 Típicos & Tradicionais</button>
     </div>
   </div>
 </div>
@@ -1119,11 +1108,6 @@ footer p{font-family:'Inter',sans-serif;font-weight:700;font-size:10px;letter-sp
   </div>
   <div class="so-chips" id="soChips">
     <button class="so-chip active" data-t="ALL" onclick="soFilterType('ALL')">Todos</button>
-    <button class="so-chip" data-t="RESTAURANTE" onclick="soFilterType('RESTAURANTE')">🍽 Restaurante</button>
-    <button class="so-chip" data-t="BAR" onclick="soFilterType('BAR')">🍺 Bar</button>
-    <button class="so-chip" data-t="ESPLANADA" onclick="soFilterType('ESPLANADA')">☀️ Esplanada</button>
-    <button class="so-chip" data-t="NIGHTLIFE" onclick="soFilterType('NIGHTLIFE')">🎵 Noite</button>
-    <button class="so-chip" data-t="PRAIA_PISCINA" onclick="soFilterType('PRAIA_PISCINA')">🏖️ Praia/Piscina</button>
     <button class="so-chip" data-t="FLAGSHIP" onclick="soFilterType('FLAGSHIP')">⭐ Flagship</button>
   </div>
   <div class="so-results" id="soResults"></div>
@@ -1180,12 +1164,15 @@ footer p{font-family:'Inter',sans-serif;font-weight:700;font-size:10px;letter-sp
       <div class="ed-field">
         <label class="ed-label">Tipologia (podes escolher mais do que uma)</label>
         <div id="eeTipoLista" style="display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px"></div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <input type="text" class="admin-input" id="eeNovoTipo" placeholder="Nova tipologia (ex: Mercado, Loja)" style="flex:1" autocomplete="off">
+          <button type="button" class="calib-row button" onclick="adicionarNovaTipologia()" style="padding:0 16px;white-space:nowrap">+ Adicionar</button>
+        </div>
       </div>
       <div class="ed-field" id="eeCozinhaField" style="display:none">
         <label class="ed-label">Tipo de cozinha (restaurantes)</label>
-        <select class="admin-input" id="eeCozinha">
-          <option value="">— Sem sub-categoria —</option>
-        </select>
+        <input type="text" class="admin-input" id="eeCozinha" list="eeCozinhaSugestoes" placeholder="Ex: Tapas / Petiscos" autocomplete="off">
+        <datalist id="eeCozinhaSugestoes"></datalist>
       </div>
       <div class="ed-field">
         <label class="ed-label">Região</label>
@@ -2057,15 +2044,16 @@ function iniciarZoomPanMapas(){
 
     mc.addEventListener('pointerdown', e => {
       if (typeof calibrando !== 'undefined' && calibrando) return;
-      mc.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       moveu = false;
       mc.classList.remove('a-animar');
       if (pointers.size === 1) {
         arrasteInicio = { x: e.clientX, y: e.clientY };
         origemPan = { tx: st.tx, ty: st.ty };
-        mc.classList.add('a-arrastar');
       } else if (pointers.size === 2) {
+        // Um gesto de pinça nunca é um toque simples num pin — aqui é
+        // seguro capturar já, para o arrasto dos dois dedos ficar suave.
+        pointers.forEach((_, id) => { try { mc.setPointerCapture(id); } catch(err){} });
         const pts = [...pointers.values()];
         distInicial = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
         utilizadorInicial = st.utilizador;
@@ -2085,8 +2073,14 @@ function iniciarZoomPanMapas(){
         }
       } else if (pointers.size === 1 && arrasteInicio) {
         const dx = e.clientX - arrasteInicio.x, dy = e.clientY - arrasteInicio.y;
-        if (Math.hypot(dx, dy) > 6) moveu = true;
-        if (st.repouso * st.utilizador > 1.02) {
+        if (!moveu && Math.hypot(dx, dy) > 6) {
+          // Só agora sabemos que é mesmo um arrasto (e não um toque num
+          // pin) — capturamos o ponteiro só neste momento.
+          moveu = true;
+          mc.classList.add('a-arrastar');
+          try { mc.setPointerCapture(e.pointerId); } catch(err){}
+        }
+        if (moveu && st.repouso * st.utilizador > 1.02) {
           st.tx = origemPan.tx + dx;
           st.ty = origemPan.ty + dy;
           _clampPan(mc, st);
@@ -2269,14 +2263,63 @@ const TIPOLOGIAS_EDITOR = {
   PRAIA_PISCINA: '🏖️ Praia/Piscina'
 };
 
-const CULINARIAS_EDITOR = {
-  ASIATICO: '🥢 Asiático',
-  ITALIANO: '🍝 Italiano',
-  TAPAS_RETIROS: '🍢 Tapas & Retiros',
-  MARISQUEIRA_CERVEJARIA: '🦐 Marisqueira & Cervejaria',
-  COZINHA_AUTOR: '👨‍🍳 Cozinha Autor',
-  TIPICOS_TRADICIONAIS: '🥘 Típicos & Tradicionais'
-};
+// Para tipologias que vão sendo criadas pelo Excel/editor e não estão
+// na lista acima com ícone próprio, gera uma etiqueta legível a partir
+// do código (ex: "LOJA_SOUVENIRS" -> "🏷️ Loja Souvenirs").
+function formatarNomeTipo(codigo){
+  const legivel = codigo.replace(/_/g, ' ').toLowerCase()
+    .split(' ').filter(Boolean)
+    .map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  return legivel;
+}
+function labelParaTipo(codigo){
+  if (TIPOLOGIAS_EDITOR[codigo]) return TIPOLOGIAS_EDITOR[codigo];
+  return '🏷️ ' + formatarNomeTipo(codigo);
+}
+
+// Todas as tipologias que já existem de facto nos dados (Excel, editor,
+// ou o que já vinha no HTML) — não há lista fixa, cresce sozinha.
+function listarTiposExistentes(){
+  const vistos = new Set();
+  ESTABELECIMENTOS.forEach(e => {
+    (e.tipo || '').split(',').forEach(t => {
+      const codigo = t.trim().toUpperCase();
+      if (codigo) vistos.add(codigo);
+    });
+  });
+  return Array.from(vistos).sort((a, b) => labelParaTipo(a).localeCompare(labelParaTipo(b), 'pt'));
+}
+
+// Reconstrói as duas barras de filtro por tipologia (lista principal e
+// overlay de pesquisa) a partir do que existe de facto nos dados.
+function renderTypeChips(){
+  const tipos = listarTiposExistentes();
+  [{ id: 'typeRow', cls: 'tbtn', fn: 'filterType', ativo: () => aT },
+   { id: 'soChips', cls: 'so-chip', fn: 'soFilterType', ativo: () => soType }
+  ].forEach(cfg => {
+    const linha = document.getElementById(cfg.id);
+    if (!linha) return;
+    linha.querySelectorAll(`.${cfg.cls}`).forEach(b => {
+      if (b.dataset.t !== 'ALL' && b.dataset.t !== 'FLAGSHIP') b.remove();
+    });
+    const botaoFlagship = linha.querySelector('[data-t="FLAGSHIP"]');
+    tipos.forEach(codigo => {
+      const btn = document.createElement('button');
+      btn.className = cfg.cls;
+      btn.dataset.t = codigo;
+      btn.textContent = labelParaTipo(codigo);
+      btn.onclick = () => window[cfg.fn](codigo);
+      linha.insertBefore(btn, botaoFlagship);
+    });
+    linha.querySelectorAll(`.${cfg.cls}`).forEach(b => b.classList.toggle('active', b.dataset.t === cfg.ativo()));
+  });
+}
+
+// Não há uma lista fixa de "tipos de cozinha": cada estabelecimento tem
+// o texto que foi posto na coluna "cozinha" da Sheet/Excel (ex: "Tapas
+// / Petiscos", "Marisqueira / Peixe Assado"...). O filtro e as sugestões
+// do editor são construídos a partir do que já existe nos dados reais —
+// ver listarCozinhasExistentes(), mais abaixo.
 
 const NOMES_REGIOES_EDITOR = {
   ALGARVE:'Algarve', EVORA:'Évora', BEJA:'Beja', SETUBAL:'Setúbal',
@@ -2818,22 +2861,59 @@ function edMudarFotoEstab(indice, url){
 
 function renderEeTipoLista(tiposSelecionados){
   const cont = document.getElementById('eeTipoLista');
-  cont.innerHTML = Object.keys(TIPOLOGIAS_EDITOR).map(codigo => {
+  // Mostra tudo o que já existe nos dados, mais qualquer código já
+  // marcado neste estabelecimento (caso seja o único a usá-lo).
+  const todos = new Set(listarTiposExistentes());
+  tiposSelecionados.forEach(c => todos.add(c));
+  const lista = Array.from(todos).sort((a, b) => labelParaTipo(a).localeCompare(labelParaTipo(b), 'pt'));
+  cont.innerHTML = lista.map(codigo => {
     const marcado = tiposSelecionados.includes(codigo) ? 'checked' : '';
     return `<div class="ee-tipo-row">
       <input type="checkbox" id="eeTipo_${codigo}" value="${codigo}" ${marcado} onchange="atualizarVisibilidadeCozinha()">
-      <label for="eeTipo_${codigo}">${TIPOLOGIAS_EDITOR[codigo]}</label>
+      <label for="eeTipo_${codigo}">${labelParaTipo(codigo)}</label>
     </div>`;
   }).join('');
   atualizarVisibilidadeCozinha();
 }
 
+// Botão "+ Adicionar" junto ao campo de nova tipologia: cria (e marca)
+// um novo checkbox na hora, sem precisar de tocar em código nenhum.
+function adicionarNovaTipologia(){
+  const input = document.getElementById('eeNovoTipo');
+  const texto = input.value.trim();
+  if (!texto) return;
+  const codigo = texto.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_ÁÀÂÃÉÊÍÓÔÕÚÇ_]/g, '');
+  if (!codigo) return;
+  if (!document.getElementById('eeTipo_' + codigo)) {
+    const cont = document.getElementById('eeTipoLista');
+    const div = document.createElement('div');
+    div.className = 'ee-tipo-row';
+    div.innerHTML = `<input type="checkbox" id="eeTipo_${codigo}" value="${codigo}" checked onchange="atualizarVisibilidadeCozinha()">
+      <label for="eeTipo_${codigo}">${labelParaTipo(codigo)}</label>`;
+    cont.appendChild(div);
+  } else {
+    document.getElementById('eeTipo_' + codigo).checked = true;
+  }
+  input.value = '';
+  atualizarVisibilidadeCozinha();
+}
+
+// Devolve a lista (ordenada, sem repetições) de todos os valores já
+// usados na coluna "cozinha" dos estabelecimentos do tipo Restaurante.
+function listarCozinhasExistentes(){
+  const vistos = new Set();
+  ESTABELECIMENTOS.forEach(e => {
+    const tipo = (e.tipo || '').toUpperCase();
+    const cozinha = (e.cozinha || '').trim();
+    if (tipo.includes('RESTAURANTE') && cozinha) vistos.add(cozinha);
+  });
+  return Array.from(vistos).sort((a, b) => a.localeCompare(b, 'pt'));
+}
+
 function popularSelectCozinha(){
-  const sel = document.getElementById('eeCozinha');
-  if (!sel || sel.dataset.populado) return;
-  sel.innerHTML = '<option value="">— Sem sub-categoria —</option>' +
-    Object.keys(CULINARIAS_EDITOR).map(codigo => `<option value="${codigo}">${CULINARIAS_EDITOR[codigo]}</option>`).join('');
-  sel.dataset.populado = '1';
+  const lista = document.getElementById('eeCozinhaSugestoes');
+  if (!lista) return;
+  lista.innerHTML = listarCozinhasExistentes().map(c => `<option value="${c}">`).join('');
 }
 
 function atualizarVisibilidadeCozinha(){
@@ -2841,6 +2921,26 @@ function atualizarVisibilidadeCozinha(){
   const restauranteMarcado = !!document.getElementById('eeTipo_RESTAURANTE')?.checked;
   const campo = document.getElementById('eeCozinhaField');
   if (campo) campo.style.display = restauranteMarcado ? 'block' : 'none';
+}
+
+// Constrói os botões de sub-filtro de cozinha a partir do que existe de
+// facto nos dados (não é uma lista fixa) — corre sempre que os dados
+// são (re)carregados, para acompanhar alterações feitas na Sheet/Excel.
+function renderCuisineChips(){
+  const linha = document.getElementById('cuisineRow');
+  if (!linha) return;
+  const cozinhas = listarCozinhasExistentes();
+  const botaoTodas = linha.querySelector('[data-c="ALL"]');
+  linha.querySelectorAll('.cbtn:not([data-c="ALL"])').forEach(b => b.remove());
+  cozinhas.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'cbtn';
+    btn.dataset.c = c;
+    btn.textContent = c;
+    btn.onclick = () => filterCozinha(c);
+    linha.appendChild(btn);
+  });
+  if (aCoz !== 'ALL' && !cozinhas.includes(aCoz)) filterCozinha('ALL');
 }
 
 function popularCidadesPorRegiao(codigoRegiao, cidadeSelecionada){
@@ -2936,9 +3036,7 @@ function guardarEstabelecimento(){
   const nome = document.getElementById('eeNome').value.trim();
   const cidade = document.getElementById('eeCidade').value.trim();
   const morada = document.getElementById('eeMorada').value.trim();
-  const tiposEscolhidos = Object.keys(TIPOLOGIAS_EDITOR).filter(codigo =>
-    document.getElementById('eeTipo_' + codigo).checked
-  );
+  const tiposEscolhidos = Array.from(document.querySelectorAll('#eeTipoLista input[type="checkbox"]:checked')).map(el => el.value);
   if (!nome || !cidade || !morada) {
     alert('Preenche pelo menos o nome, a cidade e a morada.');
     return;
@@ -3595,7 +3693,7 @@ function renderEstabelecimentos(){
 <div class="cbody">
 ${flBadge}
 <h3 class="c-name">${e.nome}</h3>
-<div class="c-type-box"><span class="c-type-txt">${(e.tipo||'').split(',').map(t => TIPOLOGIAS_EDITOR[t.trim()] || t.trim()).join(' · ')}${e.cozinha && CULINARIAS_EDITOR[e.cozinha] ? ' · ' + CULINARIAS_EDITOR[e.cozinha] : ''}</span></div>
+<div class="c-type-box"><span class="c-type-txt">${(e.tipo||'').split(',').map(t => labelParaTipo(t.trim().toUpperCase())).join(' · ')}${e.cozinha ? ' · ' + e.cozinha : ''}</span></div>
 <div class="c-city">${e.cidade}</div>
 <div class="c-divider"></div>
 <div class="info-qr-row">
@@ -3628,6 +3726,9 @@ ${e.instagram ? `<a href="${e.instagram}" target="_blank" rel="noopener" class="
     if (x.isIntersecting) { x.target.classList.add('vis'); obs.unobserve(x.target); }
   }), {threshold:.04});
   document.querySelectorAll('.card').forEach(c => obs.observe(c));
+
+  renderTypeChips();
+  renderCuisineChips();
 }
 
 /* ── RENDERIZAÇÃO PREGUIÇOSA ────────────────────────────────────────
@@ -3701,7 +3802,7 @@ function applyFilters(){
   const vis=new Set();
   document.querySelectorAll('.card').forEach(card=>{
     const city=card.dataset.city, tipo=(card.dataset.tipo||'').toUpperCase();
-    const cozinha=(card.dataset.cozinha||'').toUpperCase();
+    const cozinha=(card.dataset.cozinha||'').trim();
     const flagship=card.dataset.flagship==='true';
     const name=(card.querySelector('.c-name')?.textContent||'').toLowerCase();
     let ok=true;
