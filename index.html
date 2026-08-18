@@ -2695,6 +2695,54 @@ async function syncGet(action){
   }
 }
 
+/* Vai buscar as fotos da pasta do Drive de um estabelecimento (id da
+   coluna A = id da pasta no Drive). Devolve um array [{nome, url}] ou []. */
+async function syncGetFotos(id){
+  if (!SYNC_URL || !id) return [];
+  try {
+    const url = SYNC_URL + '?action=fotos&id=' + encodeURIComponent(id) + '&_=' + Date.now();
+    const dados = await syncFetchComRetentativas(url, { method: 'GET', cache: 'no-store' });
+    return (dados && Array.isArray(dados.fotos)) ? dados.fotos : [];
+  } catch (err) {
+    console.warn('Erro a carregar fotos da pasta do Drive (' + id + '):', err);
+    return [];
+  }
+}
+
+/* Percorre os estabelecimentos já renderizados e, para cada um, vai
+   buscar as fotos da respetiva pasta do Drive (id = id do estabelecimento).
+   Se a pasta tiver fotos, substitui o slideshow do card por essas fotos.
+   Corre em pequenos lotes para não disparar 100+ pedidos ao mesmo tempo. */
+async function carregarFotosDrivePastas(){
+  if (!SYNC_URL) return;
+  const lista = ESTABELECIMENTOS.filter(e => e.id);
+  const TAMANHO_LOTE = 4;
+  for (let i = 0; i < lista.length; i += TAMANHO_LOTE) {
+    const lote = lista.slice(i, i + TAMANHO_LOTE);
+    await Promise.all(lote.map(async e => {
+      const fotos = await syncGetFotos(e.id);
+      if (!fotos.length) return; // sem pasta ou pasta vazia: mantém foto1..4 já renderizadas
+      const card = document.getElementById(e.id);
+      if (!card) return;
+      const photosDiv = card.querySelector('.photos');
+      if (!photosDiv) return;
+      const slidesHtml = fotos.map(f =>
+        `<div class="slide"><img src="${f.url}" alt="${e.nome || ''}" loading="lazy"></div>`
+      ).join('');
+      const n = fotos.length;
+      const dotsHtml = n > 1
+        ? `<div class="slide-dots">${fotos.map((_,j)=>`<button class="slide-dot${j===0?' active':''}" data-i="${j}"></button>`).join('')}</div>`
+        : '';
+      const countHtml = n > 1 ? `<div class="slide-count">1 / ${n}</div>` : '';
+      photosDiv.innerHTML = `<div class="slideshow" data-id="${e.id}">
+          <div class="slideshow-track">${slidesHtml}</div>
+          ${dotsHtml}${countHtml}
+         </div>`;
+      if (window.initSlideshows) window.initSlideshows();
+    }));
+  }
+}
+
 function mostrarLoadingCloud(){
   const el = document.getElementById('rbLoadingOverlay');
   if (el) el.classList.add('show');
@@ -3726,6 +3774,11 @@ ${e.instagram ? `<a href="${e.instagram}" target="_blank" rel="noopener" class="
 
   renderTypeChips();
   renderCuisineChips();
+
+  // Vai buscar, em segundo plano, as fotos das pastas do Drive (não
+  // bloqueia o render — os cards já aparecem com foto1..4 se existirem,
+  // e são atualizados assim que as fotos da pasta chegarem).
+  carregarFotosDrivePastas();
 }
 
 /* ── RENDERIZAÇÃO PREGUIÇOSA ────────────────────────────────────────
