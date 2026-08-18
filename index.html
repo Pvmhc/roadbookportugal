@@ -3325,6 +3325,7 @@ function linhaParaEstabelecimento(row, index){
   const idDoExcel = get('id', 'pasta_id', 'id_pasta');
   return {
     id: idDoExcel || ('card-' + (index+1)),
+    _idExplicito: !!idDoExcel, // true = o Excel trouxe um id de propósito (ex: pasta do Drive)
     regiao: get('regiao').toUpperCase(),
     cidade: get('cidade').toUpperCase(),
     tipo: get('tipo').toUpperCase(),
@@ -3388,12 +3389,16 @@ function importarExcel(file){
         const chave = chaveEstabelecimento(n);
         const existente = mapaExistentes.get(chave);
         if(existente){
-          n.id = existente.id; // mantém o mesmo ID (não parte links/QR)
+          // Só mantém o ID antigo se o Excel NÃO trouxe um id de propósito
+          // (célula vazia na coluna id). Se trouxeres um id explícito (ex:
+          // o ID de uma pasta do Drive), esse é o que passa a valer.
+          if(!n._idExplicito) n.id = existente.id;
+          delete n._idExplicito;
           Object.assign(existente, n); // atualiza os campos no registo já existente
           atualizados++;
         }else{
-          maiorId += 1;
-          n.id = 'card-' + maiorId;
+          if(!n._idExplicito) { maiorId += 1; n.id = 'card-' + maiorId; }
+          delete n._idExplicito;
           mapaExistentes.set(chave, n);
           adicionados++;
         }
@@ -4429,7 +4434,3 @@ function setStatus(msg, type){
 
 
 </body></html>
-
-
-
-
