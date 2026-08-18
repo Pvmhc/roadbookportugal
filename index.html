@@ -3288,8 +3288,13 @@ document.addEventListener('click', (e) => {
 /* ── IMPORTAÇÃO DE ESTABELECIMENTOS VIA EXCEL ──────────────────────
    Colunas esperadas na 1ª folha do Excel (cabeçalho na 1ª linha,
    maiúsculas/minúsculas não importam):
-   nome | regiao | cidade | tipo | cozinha | flagship | morada | estacionamento |
+   id | nome | regiao | cidade | tipo | cozinha | flagship | morada | estacionamento |
    telefone | instagram | maps_url | horario | foto1 | foto2 | foto3 | foto4
+
+   A coluna "id" é OPCIONAL: se preencheres (ex: com o ID da pasta de
+   fotos no Drive), esse valor é usado como identificador do
+   estabelecimento. Se deixares em branco, é gerado automaticamente
+   "card-1", "card-2", etc., consoante a posição da linha.
 
    A coluna "cozinha" só é relevante para linhas com tipo=RESTAURANTE e aceita:
    ASIATICO, ITALIANO, TAPAS_RETIROS, MARISQUEIRA_CERVEJARIA, COZINHA_AUTOR,
@@ -3317,8 +3322,9 @@ function linhaParaEstabelecimento(row, index){
     }
     return '';
   };
+  const idDoExcel = get('id', 'pasta_id', 'id_pasta');
   return {
-    id: 'card-' + (index+1),
+    id: idDoExcel || ('card-' + (index+1)),
     regiao: get('regiao').toUpperCase(),
     cidade: get('cidade').toUpperCase(),
     tipo: get('tipo').toUpperCase(),
@@ -4423,3 +4429,7 @@ function setStatus(msg, type){
 
 
 </body></html>
+
+
+
+
