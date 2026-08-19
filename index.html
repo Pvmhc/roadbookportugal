@@ -2709,44 +2709,86 @@ async function syncGetFotos(id){
   }
 }
 
-/* Percorre só os estabelecimentos que estão MESMO no ecrã neste momento
-   (não a base toda) e, para cada um, vai buscar as fotos da respetiva
-   pasta do Drive (id = id do estabelecimento). Se a pasta tiver fotos,
-   substitui o slideshow do card por essas fotos. Corre em pequenos
-   lotes, e nunca repete um estabelecimento já carregado antes. */
+/* Vai buscar as fotos da pasta do Drive só para os estabelecimentos
+   cujo card está prestes a entrar no ecrã (em vez de pedir logo as
+   fotos de TODOS os estabelecimentos renderizados de uma vez, que era
+   o que tornava a página lenta com muitos estabelecimentos). Usa um
+   IntersectionObserver: quando um card se aproxima do ecrã, entra
+   numa fila com um máximo de pedidos em simultâneo. Nunca repete um
+   estabelecimento já carregado (ou já em fila) antes. */
 if (!window._fotosDriveJaCarregadas) window._fotosDriveJaCarregadas = new Set();
+if (!window._fotosDriveEmFila) window._fotosDriveEmFila = new Set();
+let _filaFotosDrive = [];
+let _filaFotosDriveAtiva = false;
 
-async function carregarFotosDrivePastas(){
-  if (!SYNC_URL) return;
-  const lista = ESTABELECIMENTOS.filter(e =>
-    e.id && !window._fotosDriveJaCarregadas.has(e.id) && document.getElementById(e.id)
-  );
+const _obsFotosDrive = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    _obsFotosDrive.unobserve(entry.target);
+    enfileirarFotoDrive(entry.target.id);
+  });
+}, { rootMargin: '600px 0px' }) : null;
+
+function enfileirarFotoDrive(id){
+  if (!id || window._fotosDriveJaCarregadas.has(id) || window._fotosDriveEmFila.has(id)) return;
+  window._fotosDriveEmFila.add(id);
+  _filaFotosDrive.push(id);
+  processarFilaFotosDrive();
+}
+
+async function processarFilaFotosDrive(){
+  if (_filaFotosDriveAtiva) return;
+  _filaFotosDriveAtiva = true;
   const TAMANHO_LOTE = 4;
-  for (let i = 0; i < lista.length; i += TAMANHO_LOTE) {
-    const lote = lista.slice(i, i + TAMANHO_LOTE);
-    await Promise.all(lote.map(async e => {
-      window._fotosDriveJaCarregadas.add(e.id);
-      const fotos = await syncGetFotos(e.id);
-      if (!fotos.length) return; // sem pasta ou pasta vazia: mantém foto1..4 já renderizadas
-      const card = document.getElementById(e.id);
-      if (!card) return;
-      const photosDiv = card.querySelector('.photos');
-      if (!photosDiv) return;
-      const slidesHtml = fotos.map(f =>
-        `<div class="slide"><img src="${f.url}" alt="${e.nome || ''}" loading="lazy"></div>`
-      ).join('');
-      const n = fotos.length;
-      const dotsHtml = n > 1
-        ? `<div class="slide-dots">${fotos.map((_,j)=>`<button class="slide-dot${j===0?' active':''}" data-i="${j}"></button>`).join('')}</div>`
-        : '';
-      const countHtml = n > 1 ? `<div class="slide-count">1 / ${n}</div>` : '';
-      photosDiv.innerHTML = `<div class="slideshow" data-id="${e.id}">
-          <div class="slideshow-track">${slidesHtml}</div>
-          ${dotsHtml}${countHtml}
-         </div>`;
-      if (window.initSlideshows) window.initSlideshows();
-    }));
+  while (_filaFotosDrive.length) {
+    const lote = _filaFotosDrive.splice(0, TAMANHO_LOTE);
+    await Promise.all(lote.map(carregarFotoDriveDoEstabelecimento));
   }
+  _filaFotosDriveAtiva = false;
+}
+
+async function carregarFotoDriveDoEstabelecimento(id){
+  window._fotosDriveJaCarregadas.add(id);
+  window._fotosDriveEmFila.delete(id);
+  const e = ESTABELECIMENTOS.find(x => x.id === id);
+  if (!e) return;
+  const fotos = await syncGetFotos(id);
+  if (!fotos.length) return; // sem pasta ou pasta vazia: mantém foto1..4 já renderizadas
+  const card = document.getElementById(id);
+  if (!card) return;
+  const photosDiv = card.querySelector('.photos');
+  if (!photosDiv) return;
+  const slidesHtml = fotos.map(f =>
+    `<div class="slide"><img src="${f.url}" alt="${e.nome || ''}" loading="lazy"></div>`
+  ).join('');
+  const n = fotos.length;
+  const dotsHtml = n > 1
+    ? `<div class="slide-dots">${fotos.map((_,j)=>`<button class="slide-dot${j===0?' active':''}" data-i="${j}"></button>`).join('')}</div>`
+    : '';
+  const countHtml = n > 1 ? `<div class="slide-count">1 / ${n}</div>` : '';
+  photosDiv.innerHTML = `<div class="slideshow" data-id="${id}">
+      <div class="slideshow-track">${slidesHtml}</div>
+      ${dotsHtml}${countHtml}
+     </div>`;
+  if (window.initSlideshows) window.initSlideshows();
+}
+
+/* Chamada depois de renderizar os cards: regista cada card ainda não
+   carregado no observer, em vez de ir logo pedir as fotos de todos. */
+function carregarFotosDrivePastas(){
+  if (!SYNC_URL) return;
+  if (!_obsFotosDrive) {
+    // Browsers muito antigos sem IntersectionObserver: mantém o
+    // comportamento anterior (pede tudo de imediato) como rede de
+    // segurança, para nunca ficar sem fotos.
+    ESTABELECIMENTOS.forEach(e => e.id && enfileirarFotoDrive(e.id));
+    return;
+  }
+  document.querySelectorAll('.card').forEach(card => {
+    if (!window._fotosDriveJaCarregadas.has(card.id) && !window._fotosDriveEmFila.has(card.id)) {
+      _obsFotosDrive.observe(card);
+    }
+  });
 }
 
 function mostrarLoadingCloud(){
