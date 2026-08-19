@@ -3399,6 +3399,44 @@ function linhaParaEstabelecimento(row, index){
   };
 }
 
+/* Lê as linhas de uma folha de Excel como o sheet_to_json normal, mas
+   com uma diferença importante: se uma célula tiver uma HIPERLIGAÇÃO
+   (Inserir → Link no Excel, ou um link colado com texto próprio, tipo
+   "Ver foto" a apontar para o Drive), usa o link real por trás dessa
+   hiperligação em vez do texto que aparece na célula. Sem isto, uma
+   célula assim entra como o texto visível (ex: "Ver foto") e a foto
+   nunca carrega — mesmo que o link esteja lá, escondido no Excel. */
+function lerLinhasComHyperlinks(ws){
+  if (!ws['!ref']) return [];
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const headers = {};
+  for (let c = range.s.c; c <= range.e.c; c++){
+    const addr = XLSX.utils.encode_cell({ r: range.s.r, c });
+    const cell = ws[addr];
+    const h = (cell && cell.v !== undefined && cell.v !== null) ? cell.v.toString().trim() : '';
+    if (h) headers[c] = h;
+  }
+  const linhas = [];
+  for (let r = range.s.r + 1; r <= range.e.r; r++){
+    const row = {};
+    let temValor = false;
+    for (const c in headers){
+      const addr = XLSX.utils.encode_cell({ r, c: +c });
+      const cell = ws[addr];
+      let valor = '';
+      if (cell){
+        if (cell.l && cell.l.Target) valor = cell.l.Target; // link real da hiperligação
+        else if (cell.v !== undefined && cell.v !== null) valor = cell.v.toString();
+      }
+      valor = valor.trim();
+      if (valor !== '') temValor = true;
+      row[headers[c]] = valor;
+    }
+    if (temValor) linhas.push(row);
+  }
+  return linhas;
+}
+
 function importarExcel(file){
   if(!file) return;
   if(typeof XLSX === 'undefined'){
@@ -3411,7 +3449,7 @@ function importarExcel(file){
     try{
       const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
       const primeiraFolha = wb.Sheets[wb.SheetNames[0]];
-      const linhas = XLSX.utils.sheet_to_json(primeiraFolha, {defval:''});
+      const linhas = lerLinhasComHyperlinks(primeiraFolha);
 
       if(!linhas.length){
         alert('O Excel não tem linhas de dados na primeira folha.');
