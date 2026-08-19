@@ -3863,6 +3863,13 @@ ${e.instagram ? `<a href="${e.instagram}" target="_blank" rel="noopener" class="
   renderTypeChips();
   renderCuisineChips();
 
+  // Liga o motor dos slideshows (ciclo automático, bolinhas, swipe) aos
+  // cards que acabaram de ser construídos. Sem isto, um card com foto1-4
+  // preenchidas mostra a primeira foto mas nunca avança para as outras
+  // — o motor só arrancava por acaso quando a pasta do Drive substituía
+  // o HTML do slideshow mais tarde.
+  if (window.initSlideshows) window.initSlideshows();
+
   // Vai buscar, em segundo plano, as fotos das pastas do Drive (não
   // bloqueia o render — os cards já aparecem com foto1..4 se existirem,
   // e são atualizados assim que as fotos da pasta chegarem).
