@@ -2709,17 +2709,23 @@ async function syncGetFotos(id){
   }
 }
 
-/* Percorre os estabelecimentos já renderizados e, para cada um, vai
-   buscar as fotos da respetiva pasta do Drive (id = id do estabelecimento).
-   Se a pasta tiver fotos, substitui o slideshow do card por essas fotos.
-   Corre em pequenos lotes para não disparar 100+ pedidos ao mesmo tempo. */
+/* Percorre só os estabelecimentos que estão MESMO no ecrã neste momento
+   (não a base toda) e, para cada um, vai buscar as fotos da respetiva
+   pasta do Drive (id = id do estabelecimento). Se a pasta tiver fotos,
+   substitui o slideshow do card por essas fotos. Corre em pequenos
+   lotes, e nunca repete um estabelecimento já carregado antes. */
+if (!window._fotosDriveJaCarregadas) window._fotosDriveJaCarregadas = new Set();
+
 async function carregarFotosDrivePastas(){
   if (!SYNC_URL) return;
-  const lista = ESTABELECIMENTOS.filter(e => e.id);
+  const lista = ESTABELECIMENTOS.filter(e =>
+    e.id && !window._fotosDriveJaCarregadas.has(e.id) && document.getElementById(e.id)
+  );
   const TAMANHO_LOTE = 4;
   for (let i = 0; i < lista.length; i += TAMANHO_LOTE) {
     const lote = lista.slice(i, i + TAMANHO_LOTE);
     await Promise.all(lote.map(async e => {
+      window._fotosDriveJaCarregadas.add(e.id);
       const fotos = await syncGetFotos(e.id);
       if (!fotos.length) return; // sem pasta ou pasta vazia: mantém foto1..4 já renderizadas
       const card = document.getElementById(e.id);
